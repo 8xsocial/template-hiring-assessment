@@ -3,13 +3,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
 import { useAuth } from './auth-context'
 import { supabase } from '@/lib/supabase/client'
-
-type SubscriptionTier = 'free' | 'pro'
-
-interface ProfileData {
-  subscription_tier: SubscriptionTier | null
-  credits_remaining: number | null
-}
+import type { SubscriptionTier } from '@/types/database'
 
 interface SubscriptionContextType {
   tier: SubscriptionTier
@@ -24,7 +18,7 @@ interface SubscriptionContextType {
 const SubscriptionContext = createContext<SubscriptionContextType | undefined>(undefined)
 
 export function SubscriptionProvider({ children }: { children: ReactNode }) {
-  const { user, profile } = useAuth()
+  const { user } = useAuth()
   const [tier, setTier] = useState<SubscriptionTier>('free')
   const [creditsRemaining, setCreditsRemaining] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -42,17 +36,13 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         .from('profiles')
         .select('subscription_tier, credits_remaining')
         .eq('id', user.id)
-        .single<ProfileData>()
+        .single()
 
-      if (error) {
-        console.error('Error fetching subscription:', error)
-        setLoading(false)
-        return
-      }
+      if (error) throw error
 
       if (data) {
-        setTier((data.subscription_tier || 'free') as SubscriptionTier)
-        setCreditsRemaining(data.credits_remaining || 0)
+        setTier(data.subscription_tier as SubscriptionTier)
+        setCreditsRemaining(data.credits_remaining)
       }
     } catch (error) {
       console.error('Error fetching subscription:', error)
@@ -67,9 +57,9 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
     try {
       const { error } = await supabase
         .from('profiles')
-        .update({
-          subscription_tier: 'pro' as const,
-          credits_remaining: 999
+        .update({ 
+          subscription_tier: 'pro',
+          credits_remaining: 999 
         })
         .eq('id', user.id)
 
@@ -88,9 +78,9 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
     try {
       const { error } = await supabase
         .from('profiles')
-        .update({
-          subscription_tier: 'free' as const,
-          credits_remaining: 10
+        .update({ 
+          subscription_tier: 'free',
+          credits_remaining: 10 
         })
         .eq('id', user.id)
 
@@ -105,7 +95,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     refreshSubscription()
-  }, [user, profile])
+  }, [user])
 
   const canGenerate = tier === 'pro' || creditsRemaining > 0
 

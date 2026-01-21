@@ -1,107 +1,126 @@
-"use client"
+'use client'
 
-import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from "react"
-import { supabase } from "@/lib/supabase/client"
-import type { User } from "@supabase/supabase-js"
+import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
+import { supabase } from '@/lib/supabase/client'
+import type { User, Session } from '@supabase/supabase-js'
+import type { Profile } from '@/types/database'
 
-type AuthContextType = {
+interface AuthContextType {
   user: User | null
-  isLoading: boolean
+  profile: Profile | null
+  session: Session | null
+  loading: boolean
   signOut: () => Promise<void>
+  refreshProfile: () => Promise<void>
 }
 
-const AuthContext = createContext<AuthContextType>({
-  user: null,
-  isLoading: true,
-  signOut: async () => {},
-})
+const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+  const [profile, setProfile] = useState<Profile | null>(null)
+  const [session, setSession] = useState<Session | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  // Fetch user profile from database
+  const fetchProfile = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single()
+
+      if (error) {
+        console.error('Error fetching profile:', error)
+        return null
+      }
+
+      return data
+    } catch (error) {
+      console.error('Error fetching profile:', error)
+      return null
+    }
+  }
+
+  // Refresh profile data
+  const refreshProfile = async () => {
+    if (!user) return
+    const profileData = await fetchProfile(user.id)
+    setProfile(profileData)
+  }
 
   useEffect(() => {
-    // Safety timeout - ensure loading state doesn't hang forever
-    const timeout = setTimeout(() => {
-      console.warn('[AuthContext] Loading timeout - forcing isLoading to false')
-      setIsLoading(false)
-    }, 10000) // 10 second timeout
-
-    // Get initial user
-    const init = async () => {
+    // Get initial session
+    const initializeAuth = async () => {
       try {
-        console.log('[AuthContext] Initializing...')
+        const { data: { session: initialSession } } = await supabase.auth.getSession()
+        
+        setSession(initialSession)
+        setUser(initialSession?.user ?? null)
 
-        // First check if there's a session (won't throw if no session exists)
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-
-        if (sessionError) {
-          console.error('[AuthContext] Error getting session:', sessionError)
-          setUser(null)
-          setIsLoading(false)
-          return
+        if (initialSession?.user) {
+          const profileData = await fetchProfile(initialSession.user.id)
+          setProfile(profileData)
         }
-
-        // Only try to get user if we have a session
-        if (session) {
-          const { data: { user }, error: userError } = await supabase.auth.getUser()
-
-          if (userError) {
-            console.error('[AuthContext] Error getting user:', userError)
-            setUser(null)
-          } else {
-            console.log('[AuthContext] User:', user ? user.id : 'none')
-            setUser(user)
-          }
-        } else {
-          console.log('[AuthContext] No session found')
-          setUser(null)
-        }
-
-        setIsLoading(false)
       } catch (error) {
-        console.error('[AuthContext] Init error:', error)
-        setUser(null)
-        setIsLoading(false)
+        console.error('Error initializing auth:', error)
+      } finally {
+        setLoading(false)
       }
     }
 
-    init()
+    initializeAuth()
 
     // Listen for auth changes
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      console.log('[AuthContext] Auth state changed:', session?.user ? session.user.id : 'logged out')
-      setUser(session?.user ?? null)
-      setIsLoading(false)
-    })
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (_event, currentSession) => {
+        setSession(currentSession)
+        setUser(currentSession?.user ?? null)
+
+        if (currentSession?.user) {
+          const profileData = await fetchProfile(currentSession.user.id)
+          setProfile(profileData)
+        } else {
+          setProfile(null)
+        }
+
+        setLoading(false)
+      }
+    )
 
     return () => {
-      clearTimeout(timeout)
       subscription.unsubscribe()
     }
   }, [])
 
-  const signOut = useCallback(async () => {
-    const { error } = await supabase.auth.signOut()
-    if (error) {
-      console.error("Sign out error:", error)
+  const handleSignOut = async () => {
+    try {
+      await supabase.auth.signOut()
+      setUser(null)
+      setProfile(null)
+      setSession(null)
+    } catch (error) {
+      console.error('Error signing out:', error)
     }
-    setUser(null)
-  }, [])
+  }
 
-  return (
-    <AuthContext.Provider value={{ user, isLoading, signOut }}>
-      {children}
-    </AuthContext.Provider>
-  )
+  const value = {
+    user,
+    profile,
+    session,
+    loading,
+    signOut: handleSignOut,
+    refreshProfile,
+  }
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 
 export function useAuth() {
   const context = useContext(AuthContext)
-  if (!context) {
-    throw new Error("useAuth must be used within an AuthProvider")
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider')
   }
   return context
 }
