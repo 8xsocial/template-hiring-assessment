@@ -6,7 +6,8 @@ import { createClient } from "@supabase/supabase-js"
 // WARNING: This should ONLY be used in server-side code, never exposed to client
 export function createAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  // Support both naming conventions: SUPABASE_SECRET_KEY (local CLI) and SUPABASE_SERVICE_ROLE_KEY (cloud)
+  // SUPABASE_SECRET_KEY is the current name. The legacy SUPABASE_SERVICE_ROLE_KEY
+  // fallback goes once every host that runs this has the new variable.
   const supabaseSecretKey = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY
 
   if (!supabaseUrl || !supabaseSecretKey) {

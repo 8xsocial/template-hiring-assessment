@@ -50,7 +50,7 @@ A modern SaaS starter template for frontend engineering assessments. Built with 
    ```
    NEXT_PUBLIC_SUPABASE_URL="http://127.0.0.1:54521"
    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY="<your-publishable-key>"
-   SUPABASE_SERVICE_ROLE_KEY="<your-secret-key>"
+   SUPABASE_SECRET_KEY="<your-secret-key>"
    ```
 
 5. **Start development server**
